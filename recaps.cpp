@@ -66,7 +66,7 @@ static HKL		st_hklCurrent = NULL;
 //static HWND		st_hwndFocusCurrent = NULL;
 static HICON	st_hCurIcon = NULL;
 //static ATOM		st_atomButtonClass = NULL;
-static const int cnMinOpacity = 40;
+static const int cnMinOpacity = 0;
 static int		st_nOpacity = 0;
 
 static HANDLE st_threadInject = INVALID_HANDLE_VALUE;
