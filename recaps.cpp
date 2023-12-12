@@ -226,6 +226,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 #endif*/
 			return DefWindowProc(hWnd, uMsg, wParam, lParam);
 	}
+	return 0;
 }
 
 
@@ -236,7 +237,7 @@ void CALLBACK TimerProc(HWND hWnd, UINT, UINT_PTR, DWORD)
 	HKL hklCurrent = GetKeyboardLayout(
 		GetWindowThreadProcessId(hwndFocus, NULL));
 
-	bool bUpdateOverlayIcon = false;
+	//bool bUpdateOverlayIcon = false;
 	if (hklCurrent != st_hklCurrent) {
 		for (std::map<HKL, KeyboardLayoutInfo>::iterator i = g_keyboardInfo.begin();
 			i != g_keyboardInfo.end(); i++)
@@ -272,13 +273,13 @@ void CALLBACK TimerProc(HWND hWnd, UINT, UINT_PTR, DWORD)
 
 
 void CALLBACK FadeOffProc(
-		HWND hWnd, UINT uiMessage, UINT_PTR uiTimerId, DWORD dwMilliseconds)
+		HWND hWnd, UINT /*uiMessage*/, UINT_PTR uiTimerId, DWORD /*dwMilliseconds*/)
 {
 	st_nOpacity -= 2;
 	if (st_nOpacity < cnMinOpacity)
 		KillTimer(hWnd, uiTimerId);
 	else
-		SetLayeredWindowAttributes(hWnd, 0, st_nOpacity, LWA_ALPHA);
+		SetLayeredWindowAttributes(hWnd, 0, ( BYTE )st_nOpacity, LWA_ALPHA);
 }
 
 
@@ -438,15 +439,15 @@ void SetScrollLockLED(bool bOn)
 ///////////////////////////////////////////////////////////////////////////////
 // Fills ``info`` with the currently installed keyboard layouts
 // Based on http://blogs.msdn.com/michkap/archive/2004/12/05/275231.aspx.
-void GetKeyboardLayouts(std::map<HKL, KeyboardLayoutInfo>& info)
+void GetKeyboardLayouts(std::map<HKL, KeyboardLayoutInfo>& /*info*/)
 {
-	int count = GetKeyboardLayoutList(0, NULL);
+	unsigned int count = GetKeyboardLayoutList(0, NULL);
 	std::vector<HKL> hkls(count);
 	GetKeyboardLayoutList(count, &hkls[0]);
 
 	for (UINT i = 0; i < count; i++) {
 		LANGID language
-			= (LANGID)(((UINT)hkls[i]) & 0x0000FFFF); // bottom 16 bit of HKL
+			= (LANGID)(((unsigned __int64)hkls[i]) & 0x0000FFFF); // bottom 16 bit of HKL
 		LCID locale = MAKELCID(language, SORT_DEFAULT);
 		int len = GetLocaleInfo(locale, LOCALE_SABBREVLANGNAME, NULL, 0) + 1;
 		std::vector<TCHAR> buffer1(len);
@@ -488,8 +489,8 @@ HWND RemoteGetFocus()
 {
 	HWND hwnd = GetForegroundWindow();
 	DWORD remoteThreadId = GetWindowThreadProcessId(hwnd, NULL);
-	DWORD currentThreadId = GetCurrentThreadId();
-/*	AttachThreadInput(remoteThreadId, currentThreadId, TRUE);
+/*	DWORD currentThreadId = GetCurrentThreadId();
+	AttachThreadInput(remoteThreadId, currentThreadId, TRUE);
 	HWND focused = GetFocus();
 	AttachThreadInput(remoteThreadId, currentThreadId, FALSE);
 */
@@ -533,7 +534,7 @@ static void SwitchKeyboardLayout(HWND hwnd, HKL hklSource, HKL hklTarget)
 		ModifyTrayIcon(g_hwndMessageWindow, 0, i_hotkeyl->second.iconColor, i_hotkeyl->second.name.c_str());
 		ShowFadeOffIcon(i_hotkeyl->second.showIcon /*? hwnd : NULL*/);
 #ifdef _DEBUG
-		PrintDebugString(_T("Language set to %s from %08x"), i_hotkeyl->second.name, hklSource);
+		PrintDebugString(_T("Language set to %s from %08x"), i_hotkeyl->second.name.c_str(), hklSource);
 #endif
 	} else {
 #ifdef _DEBUG
@@ -544,7 +545,7 @@ static void SwitchKeyboardLayout(HWND hwnd, HKL hklSource, HKL hklTarget)
 	static HANDLE st_uThreadId = 0;
 
 	if (NULL != hklSource) {
-		DWORD dwExitCode = -1;
+		DWORD dwExitCode = DWORD( -1 );
 		if (!GetExitCodeThread(st_uThreadId, &dwExitCode)
 				|| STILL_ACTIVE != dwExitCode) {
 		  static HKL hkls[2] = { hklSource, hklTarget };
@@ -606,16 +607,16 @@ static void ProcessHotkey(UHK uhkHotkey)
 		return;
 
 //	HKL hklSource = i_hotkey->first.bRecodeHK ? currentLayout : NULL;
-	HKL hklSource = eHKTRecode == i_hotkey->first.btHKType
+	HKL hklSource = eHKTRecode == i_hotkey->first.bits.btHKType
 											? currentLayout : NULL;
 
 	// action hotkeys
-	if (eHKTGroup != i_hotkey->first.btHKType) {
+	if (eHKTGroup != i_hotkey->first.bits.btHKType) {
 		//if (i_hotkey->first.bCycleHK || i_hotkey->first.bRecodeHK) {
-		switch (i_hotkey->first.btHKType) {
+		switch (i_hotkey->first.bits.btHKType) {
 		case eHKTCycle:
 		case eHKTRecode: {
-			if (0 != g_uhkCurrentGroup.ulHotKey) {
+			if (0 != g_uhkCurrentGroup.hotkeys.ulHotKey) {
 				i_hotkey = g_hotkeyInfo.find(g_uhkCurrentGroup);
 				if (i_hotkey != g_hotkeyInfo.end()
 						&& !i_hotkey->second.empty())
@@ -638,7 +639,7 @@ static void ProcessHotkey(UHK uhkHotkey)
 		case eHKTRemap:
 			st_uhkInject = i_hotkey->second.begin()->second;
 //			st_uhkInject.bRemapHK = 1;
-			st_uhkInject.btHKType = eHKTRemap;
+			st_uhkInject.bits.btHKType = eHKTRemap;
 			ResumeThread(st_threadInject);
 			break;
 		//}	else 	if (i_hotkey->first.bEjectHK)
@@ -705,10 +706,10 @@ void InjectInputThread(void*)
 		INPUT input[(8 + 1) * 4] = { 0 };
 
 //		if (st_uhkInject.bRemapHK) {
-		if (eHKTRemap == st_uhkInject.btHKType) {
+		if (eHKTRemap == st_uhkInject.bits.btHKType) {
 			BYTE abtMods[] = { // 0 - "up" mods, 1 - "down" mods
-				(0xFF & g_dwModifiers) & ~st_uhkInject.btMods,
-				st_uhkInject.btMods & ~(0xFF & g_dwModifiers)
+				(0xFF & g_dwModifiers) & ~st_uhkInject.bits.btMods,
+				st_uhkInject.bits.btMods & ~(0xFF & g_dwModifiers)
 			};
 
 			// "release" current and "press" new modifiers
@@ -729,7 +730,7 @@ void InjectInputThread(void*)
 						continue;
 					}
 
-					input[count].ki.wScan = MapVirtualKey(input[count].ki.wVk, MAPVK_VK_TO_VSC);
+					input[count].ki.wScan = ( WORD )MapVirtualKey(input[count].ki.wVk, MAPVK_VK_TO_VSC);
 
 					input[count].type = INPUT_KEYBOARD;
 					input[count++].ki.dwFlags = dwFlags;
@@ -740,8 +741,8 @@ void InjectInputThread(void*)
 
 			// inject hotkey's symbol
 			input[count].type = INPUT_KEYBOARD;
-			input[count].ki.wVk = st_uhkInject.btVK;
-			input[count].ki.wScan = st_uhkInject.btSK;
+			input[count].ki.wVk = st_uhkInject.bits.btVK;
+			input[count].ki.wScan = st_uhkInject.bits.btSK;
 			input[count++].ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
 
 			// restore "release" - "press" modifiers
@@ -753,7 +754,8 @@ void InjectInputThread(void*)
 					input[count].ki.dwFlags |= KEYEVENTF_KEYUP;
 			}
 			
-			UINT u = ::SendInput(count, input, sizeof(INPUT));
+			//UINT u =
+			::SendInput(count, input, sizeof(INPUT));
 			
 			st_uhkInject.ulKey = 0;
 		}
@@ -840,73 +842,75 @@ LRESULT CALLBACK LowLevelHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 		goto skip_to_next_hook; // return CallNextHookEx(st_hHook, nCode, wParam, lParam);
 	}
 
-	UHK uhkHotkey(data->vkCode, data->scanCode, g_dwModifiers, false/*bKeyDown*/, 0 != (data->flags & LLKHF_EXTENDED));
-	if (bKeyDown)
-		g_uhkLastHotkey = uhkHotkey;
-
-	g_dwKeysCount++;
-
-#if 0
-#ifdef _DEBUG
-	TCHAR ch[1024] = { 0 };
-	_stprintf(ch, _T("HK:%08x; VK:%08x SK:%08x (%08x) F:%08x P:%08x MOD:%08x Down:%s // %08x %08x\n"),
-		uhkHotkey.ulKey, data->vkCode, data->scanCode, MapVirtualKey(data->vkCode, MAPVK_VK_TO_VSC),
-		data->flags, wParam, g_dwModifiers, bKeyDown ? _T("down") : _T("up"), data->dwExtraInfo, GetKeyState(VK_APPS));
-	OutputDebugString(ch);
-#endif
-#endif
-
-	if (g_bCustomizingOn)
-		goto skip_to_next_hook; // return CallNextHookEx(st_hHook, nCode, wParam, lParam);
-
-	static UHK st_uhkHotkeyUp(0);
-
-	BOOL change = FALSE;
-	if (bKeyDown/*wParam == WM_KEYDOWN*/) {
-#if 0
-		for (std::map<UHK, std::map<HKL, UHK>>::iterator j = g_hotkeyInfo.begin();
-				j != g_hotkeyInfo.end(); j++) {
-			if (uhkHotkey.ulHotKey == j->first.ulHotKey) {
-				st_uhkHotkeyUp = !j->first.bKeyDown ? uhkHotkey : 0;
-				change = 0 == st_uhkHotkeyUp.ulHotKey;
-				break;
-			}
-		}
-#else
-		std::map<UHK, std::map<HKL, UHK>>::iterator i = g_hotkeyInfo.find(uhkHotkey);
-		if (i != g_hotkeyInfo.end()) {
-			st_uhkHotkeyUp = !i->first.bKeyDown ? uhkHotkey : 0;
-			change = 0 == st_uhkHotkeyUp.ulHotKey;
-		}
-#endif
-
-		if (0 == dwModifiers)
-			st_uhkHotkeyUp.ulHotKey = 0;
-	}
-
-#if 0
-	TCHAR chName[1024] = { 0 };
-	GetKeyNameText(data->scanCode << 16, chName, _countof(chName));
-	OutputDebugString(chName);
-	switch (wParam) {
-	case WM_KEYDOWN: OutputDebugString(L" pressed\n"); break;
-	case WM_KEYUP: OutputDebugString(L" released\n"); break;
-	default:
-		_stprintf(chName, _T("MSG:%08x\n"), wParam);
-		OutputDebugString(chName); break;
-	}
-#endif
-
-	// Handle CapsLock - only switch current layout
-	if (change /*&& !st_dwHotkeyUp*/ /*&& !ctrl*/) {
-		ProcessHotkey(uhkHotkey);
-		return 1;
-	}
-
-	if (0 == g_dwModifiers && 0 != st_uhkHotkeyUp.ulKey) {
-		ProcessHotkey(st_uhkHotkeyUp);
-		st_uhkHotkeyUp.ulKey = 0;
-		goto skip_to_next_hook; // return 1;
+	{
+	  UHK uhkHotkey(( unsigned char )data->vkCode, ( unsigned char )data->scanCode, ( unsigned short )g_dwModifiers, false/*bKeyDown*/, 0 != (data->flags & LLKHF_EXTENDED));
+	  if (bKeyDown)
+		  g_uhkLastHotkey = uhkHotkey;
+  
+	  g_dwKeysCount++;
+  
+  #if 0
+  #ifdef _DEBUG
+	  TCHAR ch[1024] = { 0 };
+	  _stprintf(ch, _T("HK:%08x; VK:%08x SK:%08x (%08x) F:%08x P:%08x MOD:%08x Down:%s // %08x %08x\n"),
+		  uhkHotkey.ulKey, data->vkCode, data->scanCode, MapVirtualKey(data->vkCode, MAPVK_VK_TO_VSC),
+		  data->flags, wParam, g_dwModifiers, bKeyDown ? _T("down") : _T("up"), data->dwExtraInfo, GetKeyState(VK_APPS));
+	  OutputDebugString(ch);
+  #endif
+  #endif
+  
+	  if (g_bCustomizingOn)
+		  goto skip_to_next_hook; // return CallNextHookEx(st_hHook, nCode, wParam, lParam);
+  
+	  static UHK st_uhkHotkeyUp(0);
+  
+	  BOOL change = FALSE;
+	  if (bKeyDown/*wParam == WM_KEYDOWN*/) {
+  #if 0
+		  for (std::map<UHK, std::map<HKL, UHK>>::iterator j = g_hotkeyInfo.begin();
+				  j != g_hotkeyInfo.end(); j++) {
+			  if (uhkHotkey.ulHotKey == j->first.ulHotKey) {
+				  st_uhkHotkeyUp = !j->first.bKeyDown ? uhkHotkey : 0;
+				  change = 0 == st_uhkHotkeyUp.ulHotKey;
+				  break;
+			  }
+		  }
+  #else
+		  std::map<UHK, std::map<HKL, UHK>>::iterator i = g_hotkeyInfo.find(uhkHotkey);
+		  if (i != g_hotkeyInfo.end()) {
+			  st_uhkHotkeyUp = !i->first.bits.bKeyDown ? uhkHotkey : 0;
+			  change = 0 == st_uhkHotkeyUp.hotkeys.ulHotKey;
+		  }
+  #endif
+  
+		  if (0 == dwModifiers)
+			  st_uhkHotkeyUp.hotkeys.ulHotKey = 0;
+	  }
+  
+  #if 0
+	  TCHAR chName[1024] = { 0 };
+	  GetKeyNameText(data->scanCode << 16, chName, _countof(chName));
+	  OutputDebugString(chName);
+	  switch (wParam) {
+	  case WM_KEYDOWN: OutputDebugString(L" pressed\n"); break;
+	  case WM_KEYUP: OutputDebugString(L" released\n"); break;
+	  default:
+		  _stprintf(chName, _T("MSG:%08x\n"), wParam);
+		  OutputDebugString(chName); break;
+	  }
+  #endif
+  
+	  // Handle CapsLock - only switch current layout
+	  if (change /*&& !st_dwHotkeyUp*/ /*&& !ctrl*/) {
+		  ProcessHotkey(uhkHotkey);
+		  return 1;
+	  }
+  
+	  if (0 == g_dwModifiers && 0 != st_uhkHotkeyUp.ulKey) {
+		  ProcessHotkey(st_uhkHotkeyUp);
+		  st_uhkHotkeyUp.ulKey = 0;
+		  goto skip_to_next_hook; // return 1;
+	  }
 	}
 
 skip_to_next_hook:

@@ -88,7 +88,7 @@ BOOL GrayScale(HBITMAP hBmp)
 }
 
 
-bool RegLoadIconData(HKEY hkey, HICON* phIconColor, HICON* phIconGray)
+bool RegLoadIconData(HKEY hkey, HICON* phIconColor, HICON* /*phIconGray*/)
 {
 	ICONINFO iconInfo = { 0 };
 	iconInfo.fIcon = 1;
@@ -117,8 +117,8 @@ static struct {
 	const TCHAR* szName;
 	UHK	uhk;
 } st_aHotKeys[] = {
-	{ _T("Cycle"),	UHK(VK_CAPITAL, MapVirtualKey(VK_CAPITAL, MAPVK_VK_TO_VSC), 0, true, false) },
-	{ _T("Recode"),	UHK(VK_CAPITAL, MapVirtualKey(VK_CAPITAL, MAPVK_VK_TO_VSC), LEFT_LCTRL, true, false) },
+	{ _T("Cycle"),	UHK(VK_CAPITAL, ( unsigned char )MapVirtualKey(VK_CAPITAL, MAPVK_VK_TO_VSC), 0, true, false) },
+	{ _T("Recode"),	UHK(VK_CAPITAL, ( unsigned char )MapVirtualKey(VK_CAPITAL, MAPVK_VK_TO_VSC), LEFT_LCTRL, true, false) },
 	{ _T("Eject"),	UHK(0, 0, 0, true, false) },
 	// { _T("Caps"),		UHK(VK_CAPITAL, MapVirtualKey(VK_CAPITAL, MAPVK_VK_TO_VSC), LEFT_LALT,	true) }
 };
@@ -127,15 +127,15 @@ static struct {
 static void LoadLegacyHotkeys(HKEY hRootKey,
 							std::map<UHK, std::map<HKL, UHK>>& hotkeys)
 {
-	DWORD dwVK = 0, dwSK = 0;
+	DWORD dwVK = 0; //, dwSK = 0;
 	DWORD dwSize = sizeof(DWORD);
 	if (ERROR_SUCCESS == RegQueryValueEx(hRootKey,
 				_T("SwitchVK"), 0, NULL, (BYTE*)&dwVK, &dwSize))
 	{
-		st_aHotKeys[0].uhk.btVK = dwVK;
-		st_aHotKeys[0].uhk.btSK = MapVirtualKey(dwVK, MAPVK_VK_TO_VSC);
-		st_aHotKeys[1].uhk.btVK = st_aHotKeys[0].uhk.btVK;
-		st_aHotKeys[1].uhk.btSK = st_aHotKeys[0].uhk.btSK;
+		st_aHotKeys[0].uhk.bits.btVK = dwVK;
+		st_aHotKeys[0].uhk.bits.btSK = MapVirtualKey(dwVK, MAPVK_VK_TO_VSC);
+		st_aHotKeys[1].uhk.bits.btVK = st_aHotKeys[0].uhk.bits.btVK;
+		st_aHotKeys[1].uhk.bits.btSK = st_aHotKeys[0].uhk.bits.btSK;
 	}
 
 #if 0
@@ -160,11 +160,11 @@ static void LoadHotkeys(HKEY hRootKey, std::map<HKL, KeyboardLayoutInfo>& info,
 							std::map<UHK, std::map<HKL, UHK>>& hotkeys, DWORD version)
 {
 	//st_aHotKeys[0].uhk.bCycleHK	= 1;
-	st_aHotKeys[0].uhk.btHKType	= eHKTCycle;
+	st_aHotKeys[0].uhk.bits.btHKType	= eHKTCycle;
 	//st_aHotKeys[1].uhk.bRecodeHK	= 1;
-	st_aHotKeys[1].uhk.btHKType	= eHKTRecode;
+	st_aHotKeys[1].uhk.bits.btHKType	= eHKTRecode;
 	//st_aHotKeys[2].uhk.bEjectHK	= 1;
-	st_aHotKeys[2].uhk.btHKType	= eHKTEject;
+	st_aHotKeys[2].uhk.bits.btHKType	= eHKTEject;
 	// st_aHotKeys[3].uhk.bCapsHK		= 1;
 
 	if (0 == version)
@@ -184,18 +184,18 @@ static void LoadHotkeys(HKEY hRootKey, std::map<HKL, KeyboardLayoutInfo>& info,
 	}
 
 	DWORD dwData = 0;
-	DWORD dwSize = sizeof(DWORD);
-	result = RegQueryValueEx(hkey, _T("Group"), 0, NULL, (BYTE*)&dwData, &dwSize);
+	DWORD dwSize_ = sizeof(DWORD);
+	result = RegQueryValueEx(hkey, _T("Group"), 0, NULL, (BYTE*)&dwData, &dwSize_);
 	if (result == ERROR_SUCCESS)
 		g_uhkCurrentGroup.ulKey = dwData;
 
 	DWORD dwCount = 0;
 	RegQueryInfoKey(hkey, 0, 0, 0, &dwCount, 0, 0, 0, 0, 0, 0, 0);
 
-	for (int i = 0; i < dwCount; i++) {
+	for (DWORD j = 0; j < dwCount; j++) {
 		TCHAR achKey[128];
 		DWORD cbName = _countof(achKey);
-		result = RegEnumKeyEx(hkey, i, achKey, &cbName, 0, 0, 0, 0);
+		result = RegEnumKeyEx(hkey, j, achKey, &cbName, 0, 0, 0, 0);
 
 		HKEY hKey = 0;
 		result = RegOpenKey(hkey, achKey, &hKey);
@@ -234,7 +234,7 @@ static void LoadRemaps(HKEY hRootKey, /*std::map<HKL, KeyboardLayoutInfo>& info,
 	DWORD dwCount = 0;
 	RegQueryInfoKey(hkey, 0, 0, 0, 0, 0, 0, &dwCount, 0, 0, 0, 0);
 
-	for (int i = 0; i < dwCount; i++) {
+	for (DWORD i = 0; i < dwCount; i++) {
 		TCHAR achKey[128];
 		DWORD cbName = _countof(achKey);
 		result = RegEnumValue(hkey, i, achKey, &cbName, 0, 0, 0, 0);
@@ -290,23 +290,23 @@ void LoadConfiguration(std::map<HKL, KeyboardLayoutInfo>& info)
 	LONG result = RegOpenKey(HKEY_CURRENT_USER, L"Software\\Recaps", &hRootKey);
 
 	DWORD version = 0;
-	DWORD length = sizeof(version);
+	DWORD length_ = sizeof(version);
 	result = RegQueryValueEx(
-			hRootKey, _T("Version"), 0, NULL, (BYTE*)(&version), &length);
+			hRootKey, _T("Version"), 0, NULL, (BYTE*)(&version), &length_);
 	if (result != ERROR_SUCCESS)
 		version = 0;
 
-	DWORD idxLED = info.size();
+	size_t idxLED = info.size();
 	if (0 == version) {
-		length = sizeof(idxLED);
+		length_ = sizeof(idxLED);
 		result = RegQueryValueEx(
-				hRootKey, _T("ScrollLED"), 0, NULL, (BYTE*)(&idxLED), &length);
+				hRootKey, _T("ScrollLED"), 0, NULL, (BYTE*)(&idxLED), &length_);
 	}
 
 	for (std::map<HKL, KeyboardLayoutInfo>::iterator
 			i = info.begin();	i != info.end(); i++) {
 		TCHAR name[9] = { 0 };
-		_ultow((UINT)i->first, name, 16);
+		_ui64tow(( unsigned __int64 )i->first, name, 16);
 		HKEY hkey = 0;
 		result = RegOpenKey(hRootKey, name, &hkey);
 		if (result == ERROR_SUCCESS) {
@@ -487,7 +487,7 @@ static void SaveHotkeys(
 	DWORD dwCount = 0;
 	RegQueryInfoKey(hKey, 0, 0, 0, &dwCount, 0, 0, 0, 0, 0, 0, 0);
 
-	for (int i = 0; i < dwCount; i++) {
+	for (DWORD i = 0; i < dwCount; i++) {
 		TCHAR achKey[128];
 		DWORD cbName = _countof(achKey);
 		result = RegEnumKeyEx(hKey, 0, achKey, &cbName, 0, 0, 0, 0);
@@ -496,7 +496,7 @@ static void SaveHotkeys(
 
 	for (std::map<UHK, std::map<HKL, UHK>>::const_iterator i = hotkeys.begin();
 				i != hotkeys.end(); i++) {
-		if (eHKTGroup == i->first.btHKType)
+		if (eHKTGroup == i->first.bits.btHKType)
 			continue;
 /*		if (i->first.bCycleHK)
 			st_aHotKeys[0].uhk = i->first;
@@ -506,7 +506,7 @@ static void SaveHotkeys(
 			st_aHotKeys[2].uhk = i->first;*/
 //		if (i->first.bCapsHK)
 	//		st_aHotKeys[3].uhk = i->first;
-		switch (i->first.btHKType) {
+		switch (i->first.bits.btHKType) {
 		case eHKTCycle:		st_aHotKeys[0].uhk = i->first; break;
 		case eHKTRecode:	st_aHotKeys[1].uhk = i->first; break;
 		case eHKTEject:		st_aHotKeys[2].uhk = i->first; break;
@@ -525,7 +525,7 @@ static void SaveHotkeys(
 	if (result == ERROR_SUCCESS) {
 		for (std::map<UHK, std::map<HKL, UHK>>::const_iterator i = hotkeys.begin();
 				i != hotkeys.end(); i++) {
-			if (eHKTGroup != i->first.btHKType)
+			if (eHKTGroup != i->first.bits.btHKType)
 				continue;
 
 			TCHAR name[24] = { 0 };
@@ -545,7 +545,7 @@ static void SaveHotkeys(
 			for (std::map<HKL, UHK>::const_iterator j = i->second.begin();
 					j != i->second.end(); j++) {
 				_ultot(idx++, name, 10);
-				DWORD dwHklData = reinterpret_cast<DWORD>(j->first);
+				unsigned __int64 dwHklData = reinterpret_cast< unsigned __int64 >(j->first);
 				RegSetValueEx(hkey, name, 0, REG_DWORD, (CONST BYTE*)(&dwHklData), sizeof(dwHklData));
 			}
 
@@ -566,7 +566,7 @@ static void SaveRemaps(
 	DWORD dwCount = 0;
 	RegQueryInfoKey(hKey, 0, 0, 0, 0, 0, 0, &dwCount, 0, 0, 0, 0);
 
-	for (int i = 0; i < dwCount; i++) {
+	for (DWORD i = 0; i < dwCount; i++) {
 		TCHAR achKey[128];
 		DWORD cbName = _countof(achKey);
 		result = RegEnumValue(hKey, 0, achKey, &cbName, 0, 0, 0, 0);
@@ -576,7 +576,7 @@ static void SaveRemaps(
 	for (std::map<UHK, std::map<HKL, UHK>>::const_iterator i = hotkeys.begin();
 				i != hotkeys.end(); i++) {
 		//if (0 == i->first.bRemapHK)
-		if (eHKTRemap != i->first.btHKType)
+		if (eHKTRemap != i->first.bits.btHKType)
 			continue;
 
 		TCHAR name[24] = { 0 };
@@ -605,7 +605,7 @@ void SaveConfiguration(const std::map<HKL, KeyboardLayoutInfo>& info)
 		for (std::map<HKL, KeyboardLayoutInfo>::const_iterator i = info.begin();
 				i != info.end(); i++) {
 			TCHAR name[9] = { 0 };
-			_ultow((UINT)i->first, name, 16);
+			_ui64tow( ( unsigned __int64 )i->first, name, 16);
 			HKEY hkey = 0;
 			result = RegOpenKey(hRootKey, name, &hkey);
 			if (result != ERROR_SUCCESS)

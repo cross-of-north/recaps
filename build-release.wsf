@@ -5,12 +5,12 @@
 
 <job id = "ManualInvokeHandler">
 	<object id="FSO" progid="Scripting.FileSystemObject" />
-	<object id="DTE" progid="VisualStudio.DTE.9.0"/>
+	<object id="DTE" progid="VisualStudio.DTE.17.0"/>
 	<object id="WSHShell" progid="WScript.Shell"/> 
 	<object id="shellApp" progid="Shell.Application"/>
 	<script language="JScript">
 
-	var solutionFileName = "recaps.2008.sln";
+	var solutionFileName = "recaps.2022.sln";
 
 	var currentFolder = FSO.GetParentFolderName(WScript.ScriptFullName);
 	var solutionPath = FSO.BuildPath(currentFolder, solutionFileName);

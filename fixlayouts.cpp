@@ -366,7 +366,8 @@ void SendKeyCombo(BYTE vkModifier, BYTE vk, BOOL extended)
 	input[count].ki.wVk = vk;
 	input[count++].ki.dwFlags = KEYEVENTF_KEYUP | (extended ? KEYEVENTF_EXTENDEDKEY : 0);
 
-	UINT u = ::SendInput(count, input, sizeof(INPUT));
+	//UINT u =
+	::SendInput(count, input, sizeof(INPUT));
 /*#ifdef _DEBUG
 		_stprintf(ch, _T("SendInput:%d %d\n"), u, GetLastError());
 		OutputDebugString(ch);

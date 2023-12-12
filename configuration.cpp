@@ -62,7 +62,7 @@ DWORD VkToModBit(DWORD vkCode)
 
 void ExpandHotkeyName(std::basic_string<TCHAR>& name, UHK uhk)
 {
-	if (0 == uhk.ulHotKey) {
+	if (0 == uhk.hotkeys.ulHotKey) {
 		name = _T("Disabled");
 		return;
 	}
@@ -79,9 +79,9 @@ void ExpandHotkeyName(std::basic_string<TCHAR>& name, UHK uhk)
 		_T("Menu")				// LEFT_MENU		= 1 << 8
 	};
 
-	DWORD dwModifiers = uhk.btMods;
+	DWORD dwModifiers = uhk.bits.btMods;
 
-	dwModifiers &= ~VkToModBit(uhk.btVK);
+	dwModifiers &= ~VkToModBit(uhk.bits.btVK);
 
 	int i = 0;
 	for (DWORD mask = 1; mask != LEFT_MAX; mask <<= 1, i++)
@@ -91,7 +91,7 @@ void ExpandHotkeyName(std::basic_string<TCHAR>& name, UHK uhk)
 		}
 
 	int index = -1;
-	switch (uhk.btVK) {
+	switch (uhk.bits.btVK) {
 	case VK_LSHIFT:  	index = 0; break;
 	case VK_RSHIFT:  	index = 1; break;
 	case VK_LCONTROL:	index = 2; break;
@@ -107,14 +107,14 @@ void ExpandHotkeyName(std::basic_string<TCHAR>& name, UHK uhk)
 
 	if (-1 == index) {
 		std::vector<TCHAR> buffer(64);
-		DWORD dwScanCode = 0 == uhk.btSK
-			? MapVirtualKey(uhk.btVK, MAPVK_VK_TO_VSC) : uhk.btSK;
-		if (GetKeyNameText(dwScanCode << 16 | uhk.bExtKey << 24, &buffer[0], buffer.size())) {
+		DWORD dwScanCode = 0 == uhk.bits.btSK
+			? MapVirtualKey(uhk.bits.btVK, MAPVK_VK_TO_VSC) : uhk.bits.btSK;
+		if (GetKeyNameText(dwScanCode << 16 | uhk.bits.bExtKey << 24, &buffer[0], ( int )buffer.size())) {
 			name += &buffer[0];
 		} else {
 			_sntprintf(&buffer[0], 64, _T("GetKeyNameText error %d"), GetLastError());
 			OutputDebugString(&buffer[0]);
-			_sntprintf(&buffer[0], 64, _T("VK:%#x; SK:%#x"), uhk.btVK, dwScanCode);
+			_sntprintf(&buffer[0], 64, _T("VK:%#x; SK:%#x"), uhk.bits.btVK, dwScanCode);
 			name += &buffer[0];
 		}
 	} else
@@ -122,7 +122,7 @@ void ExpandHotkeyName(std::basic_string<TCHAR>& name, UHK uhk)
 }
 
 
-static BOOL OnInitShortCutDialog(HWND hwnd, HWND hwndFocus, LPARAM lParam)
+static BOOL OnInitShortCutDialog(HWND hwnd, HWND /*hwndFocus*/, LPARAM lParam)
 {
 	SetTimer(hwnd, 1, 100, NULL);
 	st_hbrBack = CreateSolidBrush(RGB(0, 255, 0));
@@ -155,14 +155,14 @@ static bool OnApply(bool bDisable)
 	if (!bDisable) {
 		std::map<UHK, std::map<HKL, UHK>>::iterator
 			i = g_hotkeyInfo.find(st_uhkCustHotkey);
-		if (st_uhkCustHotkeyOrg.ulHotKey != st_uhkCustHotkey.ulHotKey
+		if (st_uhkCustHotkeyOrg.hotkeys.ulHotKey != st_uhkCustHotkey.hotkeys.ulHotKey
 					&& i != g_hotkeyInfo.end()) {
 			MessageBox(NULL, _T("The hotkey is already in use. Please choose another one."),
 				_T("Recaps"), MB_OK | MB_ICONWARNING | MB_TASKMODAL | MB_TOPMOST);
 			return false;
 		}
 
-		switch (st_uhkCustHotkey.btVK) {
+		switch (st_uhkCustHotkey.bits.btVK) {
 		case VK_LSHIFT:
 		case VK_RSHIFT:
 		case VK_LCONTROL:
@@ -172,15 +172,15 @@ static bool OnApply(bool bDisable)
 		case VK_LWIN:
 		case VK_RWIN:
 		case VK_APPS:
-			st_uhkCustHotkey.bKeyDown = 0;
+			st_uhkCustHotkey.bits.bKeyDown = 0;
 			break;
 		default:
-			st_uhkCustHotkey.bKeyDown = 1;
+			st_uhkCustHotkey.bits.bKeyDown = 1;
 			break;
 		}
 
 	} else
-		st_uhkCustHotkey.ulHotKey = 0;
+		st_uhkCustHotkey.hotkeys.ulHotKey = 0;
 
 #if 1
 	TCHAR ch[100] = { 0 };
@@ -193,7 +193,7 @@ static bool OnApply(bool bDisable)
 
 
 static void OnShortCutCommand(
-		HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
+		HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
 {
 	bool bDisable = false;
 	switch (id) {
@@ -212,7 +212,7 @@ static void OnShortCutCommand(
 }
 
 
-static void OnShortCutTimer(HWND hwnd, UINT id)
+static void OnShortCutTimer(HWND hwnd, UINT /*id*/)
 {
 	static DWORD st_dwPrevModifiers = g_dwModifiers;
 	DWORD dwChanged = st_dwPrevModifiers ^ g_dwModifiers;
@@ -233,9 +233,9 @@ static void OnShortCutTimer(HWND hwnd, UINT id)
 #endif */
 
 	// copy but preserve HK flags
-		st_uhkCustHotkey.bKeyDown = g_uhkLastHotkey.bKeyDown;
-		st_uhkCustHotkey.bExtKey = g_uhkLastHotkey.bExtKey;
-		st_uhkCustHotkey.ulHotKey = g_uhkLastHotkey.ulHotKey;
+		st_uhkCustHotkey.bits.bKeyDown = g_uhkLastHotkey.bits.bKeyDown;
+		st_uhkCustHotkey.bits.bExtKey = g_uhkLastHotkey.bits.bExtKey;
+		st_uhkCustHotkey.hotkeys.ulHotKey = g_uhkLastHotkey.hotkeys.ulHotKey;
 
 		std::basic_string<TCHAR> hotkeyName;
 		ExpandHotkeyName(hotkeyName, st_uhkCustHotkey);
@@ -254,7 +254,7 @@ static void OnShortCutClose(HWND hwnd)
 }
 
 
-HBRUSH OnShortCutColorStatic(HWND hwnd, HDC hdc, HWND hwndChild, int type)
+HBRUSH OnShortCutColorStatic(HWND hwnd, HDC hdc, HWND hwndChild, int /*type*/)
 {
 	UINT idControl = GetDlgCtrlID(hwndChild);
 
@@ -389,10 +389,10 @@ static BOOL InitHotkeysList(HWND hwnd)
 	aActionItems[1].uhk.bRecodeHK	= 1;
 	aActionItems[2].uhk.bEjectHK	= 1;
 	aActionItems[3].uhk.bCapsHK		= 1;*/
-	aActionItems[0].uhk.btHKType = eHKTCycle;
-	aActionItems[1].uhk.btHKType = eHKTRecode;
-	aActionItems[2].uhk.btHKType = eHKTEject;
-	aActionItems[3].uhk.btHKType = eHKTCaps;
+	aActionItems[0].uhk.bits.btHKType = eHKTCycle;
+	aActionItems[1].uhk.bits.btHKType = eHKTRecode;
+	aActionItems[2].uhk.bits.btHKType = eHKTEject;
+	aActionItems[3].uhk.bits.btHKType = eHKTCaps;
 
 	for (std::map<UHK, std::map<HKL, UHK>>::iterator i = g_hotkeyInfo.begin();
 			i != g_hotkeyInfo.end(); i++) {
@@ -404,7 +404,7 @@ static BOOL InitHotkeysList(HWND hwnd)
 			aActionItems[2].uhk = i->first.ulKey;
 	//	if (i->first.bCapsHK)
 		//	aActionItems[3].uhk = i->first.ulKey; */
-		switch (i->first.btHKType) {
+		switch (i->first.bits.btHKType) {
 		case eHKTCycle:		aActionItems[0].uhk = i->first.ulKey; break;
 		case eHKTRecode:	aActionItems[1].uhk = i->first.ulKey; break;
 		case eHKTEject:		aActionItems[2].uhk = i->first.ulKey; break;
@@ -413,11 +413,11 @@ static BOOL InitHotkeysList(HWND hwnd)
 	}
 
 	aActionItems[3].uhk = UHK(VK_CAPITAL,
-			MapVirtualKey(VK_CAPITAL, MAPVK_VK_TO_VSC), 0,	true, false);
+		( unsigned char )MapVirtualKey(VK_CAPITAL, MAPVK_VK_TO_VSC), 0,	true, false);
 //	aActionItems[3].uhk.bCapsHK = 1;
-	aActionItems[3].uhk.btHKType = eHKTCaps;
-	if (aActionItems[0].uhk.btVK == VK_CAPITAL)
-		aActionItems[3].uhk.btMods = LEFT_LALT;
+	aActionItems[3].uhk.bits.btHKType = eHKTCaps;
+	if (aActionItems[0].uhk.bits.btVK == VK_CAPITAL)
+		aActionItems[3].uhk.bits.btMods = LEFT_LALT;
 
 	LVITEM lvi = { 0 };
 	lvi.mask = LVIF_TEXT | LVIF_PARAM;
@@ -452,7 +452,7 @@ static BOOL InitHotkeysList(HWND hwnd)
 	for (std::map<UHK, std::map<HKL, UHK>>::iterator i = g_hotkeyInfo.begin();
 			i != g_hotkeyInfo.end(); i++) {
 //		if (!i->first.bRemapHK)
-		if (eHKTRemap != i->first.btHKType)
+		if (eHKTRemap != i->first.bits.btHKType)
 			continue;
 
 		lvi.mask |= LVIF_PARAM;
@@ -539,7 +539,7 @@ static BOOL InitLanguagesList(HWND hwnd)
 	for (std::map<HKL, KeyboardLayoutInfo>::iterator i = g_keyboardInfo.begin();
 			i != g_keyboardInfo.end(); i++) {
 		lvi.mask = LVIF_PARAM;
-		lvi.iItem  = std::distance(g_keyboardInfo.begin(), i);
+		lvi.iItem  = ( int )std::distance(g_keyboardInfo.begin(), i);
 		lvi.iSubItem = 0;
 		lvi.lParam = (LPARAM)i->first;
 
@@ -554,6 +554,7 @@ static BOOL InitLanguagesList(HWND hwnd)
 		if (ListView_SetItem(hWndList, &lvi) == -1)
 				return FALSE;
 	}
+	return FALSE;
 }
 
 
@@ -569,7 +570,8 @@ static BOOL InitGroupsList(HWND hwnd)
 	ListView_SetTextBkColor(hWndList, GetSysColor(COLOR_BTNFACE));
 
 	// Prepare imagelist
-	HWND hWndHeader = ListView_GetHeader(hWndList);
+	//HWND hWndHeader = 
+	ListView_GetHeader(hWndList);
 
 	// init columns
 	LVCOLUMN lvc = { 0 };
@@ -582,13 +584,13 @@ static BOOL InitGroupsList(HWND hwnd)
 	if (ListView_InsertColumn(hWndList, 0, &lvc) == -1)
 		return FALSE;
 
-	int nWidth = (420 - 150) / g_keyboardInfo.size();
+	int nWidth = (420 - 150) / ( int )g_keyboardInfo.size();
 	if (nWidth < 50)
 		nWidth = 50;
 
 	for (std::map<HKL, KeyboardLayoutInfo>::iterator i = g_keyboardInfo.begin();
 			i != g_keyboardInfo.end(); i++) {
-		lvc.iSubItem = 1 + std::distance(g_keyboardInfo.begin(), i);
+		lvc.iSubItem = 1 + ( int )std::distance(g_keyboardInfo.begin(), i);
 		std::basic_string<TCHAR> str(i->second.id);
 		//str += _T(" *");
 		lvc.pszText = (TCHAR*)str.c_str();
@@ -609,10 +611,10 @@ static BOOL InitGroupsList(HWND hwnd)
 	for (std::map<UHK, std::map<HKL, UHK>>::iterator i = g_hotkeyInfo.begin();
 			i != g_hotkeyInfo.end(); i++) {
 
-		if (eHKTGroup != i->first.btHKType)
+		if (eHKTGroup != i->first.bits.btHKType)
 			continue;
 
-		lvi.iItem  = std::distance(g_hotkeyInfo.begin(), i);
+		lvi.iItem  = ( int )std::distance(g_hotkeyInfo.begin(), i);
 		lvi.iSubItem = 0;
 
 		std::basic_string<TCHAR> name;
@@ -624,15 +626,17 @@ static BOOL InitGroupsList(HWND hwnd)
 				return FALSE;
 	}
 
-	lvi.iItem  = g_hotkeyInfo.size();
+	lvi.iItem  = ( int )g_hotkeyInfo.size();
 	lvi.iSubItem = 0;
-	lvi.iImage = g_hotkeyInfo.size();
+	lvi.iImage = ( int )g_hotkeyInfo.size();
 
 	lvi.pszText = (LPTSTR)_T("<add new group>");
 	lvi.lParam = (LPARAM)0;
 
 	if (ListView_InsertItem(hWndList, &lvi) == -1)
 		return FALSE;
+
+	return FALSE;
 }
 
 
@@ -672,11 +676,11 @@ static void ReposControls(HWND hwnd,
 }
 
 
-static BOOL OnInitConfigureDialog(HWND hwnd, HWND hwndFocus, LPARAM lParam)
+static BOOL OnInitConfigureDialog(HWND hwnd, HWND /*hwndFocus*/, LPARAM /*lParam*/)
 {
 	SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)g_hIcon);
 
-	st_hImageList16 = ImageList_Create(16, 16, ILC_MASK, g_keyboardInfo.size(), 0);
+	st_hImageList16 = ImageList_Create(16, 16, ILC_MASK, ( int )g_keyboardInfo.size(), 0);
 	for (std::map<HKL, KeyboardLayoutInfo>::iterator i = g_keyboardInfo.begin();
 			i != g_keyboardInfo.end(); i++)
 		ImageList_AddIcon(st_hImageList16,
@@ -730,17 +734,17 @@ static LRESULT OnHotkeysClick(HWND hwnd, NMHDR* pnmhdr)
 		lvi.iItem    = lvhti.iItem;
 		std::vector<TCHAR> text(128);
 		lvi.pszText = &text[0];
-		lvi.cchTextMax = text.size();
+		lvi.cchTextMax = ( int )text.size();
 		ListView_GetItem(pnmhdr->hwndFrom, &lvi);
 
-		UHK uhk = (UHK)(lvi.lParam);
+		UHK uhk = (UHK)(( unsigned long )lvi.lParam);
 
 //		if (1 != lvhti.iSubItem && !uhk.bRemapHK) // Name and not remapping hotkey
-		if (1 != lvhti.iSubItem && eHKTRemap != uhk.btHKType) // Name and not remapping hotkey
+		if (1 != lvhti.iSubItem && eHKTRemap != uhk.bits.btHKType) // Name and not remapping hotkey
 			break;
 
 //		if (uhk.bCapsHK) { // Caps Lock hotkey is not editable.
-		if (eHKTCaps == uhk.btHKType) { // Caps Lock hotkey is not editable.
+		if (eHKTCaps == uhk.bits.btHKType) { // Caps Lock hotkey is not editable.
 			MessageBox(NULL,
 				_T("A 'Toggle Capslock key' hotkey is not editable.\nChange the 'Cycle Switch' one instead."),
 				_T("Recaps"), MB_OK | MB_ICONINFORMATION | MB_TASKMODAL | MB_TOPMOST);
@@ -751,7 +755,7 @@ static LRESULT OnHotkeysClick(HWND hwnd, NMHDR* pnmhdr)
 		HotkeyDialogInit InitData(uhk, caption.c_str());
 
 //		if (uhk.bRemapHK) {
-		if (eHKTRemap == uhk.btHKType) {
+		if (eHKTRemap == uhk.bits.btHKType) {
 			switch (lvhti.iSubItem) {
 			case 1: {
 				std::map<UHK, std::map<HKL, UHK>>::iterator
@@ -785,8 +789,8 @@ static LRESULT OnHotkeysClick(HWND hwnd, NMHDR* pnmhdr)
 			break;
 
 //		if (st_uhkCustHotkey.bRemapHK
-		if (eHKTRemap == st_uhkCustHotkey.btHKType
-				&& 0 == st_uhkCustHotkey.ulHotKey
+		if (eHKTRemap == st_uhkCustHotkey.bits.btHKType
+				&& 0 == st_uhkCustHotkey.hotkeys.ulHotKey
 				&& 0 == lvhti.iSubItem) { // Deleting remaping hotkey
 			std::map<UHK, std::map<HKL, UHK>>::iterator
 					i = g_hotkeyInfo.find(uhk);
@@ -799,13 +803,13 @@ static LRESULT OnHotkeysClick(HWND hwnd, NMHDR* pnmhdr)
 
 		// param - exclude if remap target
 //		if (!(uhk.bRemapHK && 1 == lvhti.iSubItem)) {
-		if (!(eHKTRemap == uhk.btHKType && 1 == lvhti.iSubItem)) {
+		if (!(eHKTRemap == uhk.bits.btHKType && 1 == lvhti.iSubItem)) {
 			lvi.mask = LVIF_PARAM;
 			lvi.iItem  = lvhti.iItem;
 			lvi.iSubItem = 0;
 			lvi.lParam = (LPARAM)st_uhkCustHotkey.ulKey;
 //			if (uhk.bRemapHK && 0 == uhk.ulHotKey) { // new
-			if (eHKTRemap == uhk.btHKType && 0 == uhk.ulHotKey) { // new
+			if (eHKTRemap == uhk.bits.btHKType && 0 == uhk.hotkeys.ulHotKey) { // new
 				ListView_InsertItem(pnmhdr->hwndFrom, &lvi);
 
 				lvi.mask = LVIF_TEXT;
@@ -828,25 +832,25 @@ static LRESULT OnHotkeysClick(HWND hwnd, NMHDR* pnmhdr)
 		lvi.pszText = (LPTSTR)hotkeyName.c_str();
 		ListView_SetItem(pnmhdr->hwndFrom, &lvi);
 		//if (st_uhkCustHotkey.bCycleHK) {
-		if (eHKTCycle == st_uhkCustHotkey.btHKType) {
+		if (eHKTCycle == st_uhkCustHotkey.bits.btHKType) {
 			lvi.iItem = 3;
-			if (st_uhkCustHotkey.btVK == VK_CAPITAL)
+			if (st_uhkCustHotkey.bits.btVK == VK_CAPITAL)
 				lvi.pszText = (LPTSTR)_T("L.Alt + Caps Lock");
 			else
 				lvi.pszText = (LPTSTR)_T("Caps Lock");
 			ListView_SetItem(pnmhdr->hwndFrom, &lvi);
 		}
 
-		if (st_uhkCustHotkey.ulHotKey != InitData.uhk.ulHotKey) {
+		if (st_uhkCustHotkey.hotkeys.ulHotKey != InitData.uhk.hotkeys.ulHotKey) {
 			std::map<UHK, std::map<HKL, UHK>>::iterator
 				i = g_hotkeyInfo.find(uhk);
 //			if (uhk.bRemapHK && 1 == lvhti.iSubItem) {
-			if (eHKTRemap == uhk.btHKType && 1 == lvhti.iSubItem) {
+			if (eHKTRemap == uhk.bits.btHKType && 1 == lvhti.iSubItem) {
 				if (i != g_hotkeyInfo.end())
 					if (!i->second.empty())
 						i->second.begin()->second = st_uhkCustHotkey;
 //			} else if (uhk.bRemapHK && 0 == uhk.ulHotKey) { // new
-			} else if (eHKTRemap == uhk.btHKType && 0 == uhk.ulHotKey) { // new
+			} else if (eHKTRemap == uhk.bits.btHKType && 0 == uhk.hotkeys.ulHotKey) { // new
 				std::map<HKL, UHK> remap;
 				remap.insert(std::pair<HKL, UHK>(0, 0));
 				g_hotkeyInfo.insert(
@@ -944,25 +948,25 @@ static LRESULT OnGroupsClick(HWND hwnd, NMHDR* pnmhdr)
 	LVHITTESTINFO lvhti = { 0 };
 	lvhti.pt = lpnma->ptAction;
 	if (-1 != ListView_SubItemHitTest(pnmhdr->hwndFrom, &lvhti)) {
-		LVITEM lvi   = { 0 };
-		lvi.mask     = LVIF_PARAM | LVIF_TEXT;
+		LVITEM lvi_   = { 0 };
+		lvi_.mask     = LVIF_PARAM | LVIF_TEXT;
 		std::vector<TCHAR> text(128);
-		lvi.pszText = &text[0];
-		lvi.cchTextMax = text.size();
-		lvi.iItem    = lvhti.iItem;
-		ListView_GetItem(pnmhdr->hwndFrom, &lvi);
+		lvi_.pszText = &text[0];
+		lvi_.cchTextMax = ( int )text.size();
+		lvi_.iItem    = lvhti.iItem;
+		ListView_GetItem(pnmhdr->hwndFrom, &lvi_);
 
-		UHK uhk = (UHK)(lvi.lParam);
+		UHK uhk = (UHK)(( unsigned long )lvi_.lParam);
 		std::basic_string<TCHAR> caption(_T("Group hotkey: "));
 		caption += &text[0];
 
-		lvi.mask     = LVIF_TEXT;
-		lvi.pszText  = (LPTSTR)_T("");
-		lvi.iItem    = lvhti.iItem;
-		lvi.iSubItem = lvhti.iSubItem;
+		lvi_.mask     = LVIF_TEXT;
+		lvi_.pszText  = (LPTSTR)_T("");
+		lvi_.iItem    = lvhti.iItem;
+		lvi_.iSubItem = lvhti.iSubItem;
 
 		if (0 == lvhti.iSubItem) { // Hotkey
-			lvi.mask = 0;
+			lvi_.mask = 0;
 			HotkeyDialogInit InitData(uhk, caption.c_str(), _T("Delete"));
 			g_bCustomizingOn = true;
 			st_dwPrevKeysCount = g_dwKeysCount;
@@ -974,10 +978,10 @@ static LRESULT OnGroupsClick(HWND hwnd, NMHDR* pnmhdr)
 						hwnd, ShortCutDialogProc, (LPARAM)&InitData))
 				break;
 
-				if (st_uhkCustHotkey.ulHotKey == uhk.ulHotKey)
+				if (st_uhkCustHotkey.hotkeys.ulHotKey == uhk.hotkeys.ulHotKey)
 					break;
 
-				if (0 == st_uhkCustHotkey.ulHotKey) { // Disabled
+				if (0 == st_uhkCustHotkey.hotkeys.ulHotKey) { // Disabled
 						std::map<UHK, std::map<HKL, UHK>>::iterator
 							i = g_hotkeyInfo.find(uhk);
 					if (i != g_hotkeyInfo.end())
@@ -1038,14 +1042,14 @@ static LRESULT OnGroupsClick(HWND hwnd, NMHDR* pnmhdr)
 			}
 		}
 
-		ListView_SetItem(pnmhdr->hwndFrom, &lvi);
+		ListView_SetItem(pnmhdr->hwndFrom, &lvi_);
 	}
 
 	return 0;
 }
 
 
-static LRESULT OnDonationClick(HWND hwnd, NMHDR* pnmhdr)
+static LRESULT OnDonationClick(HWND hwnd, NMHDR* /*pnmhdr*/)
 {
 	ShellExecute(NULL, _T("open"),
 		L"https://www.paypal.com/cgi-bin/webscr?cmd=_donations"
@@ -1060,13 +1064,13 @@ static LRESULT OnDonationClick(HWND hwnd, NMHDR* pnmhdr)
 static bool IsHotkeyEditable(int iSubItem, UHK uhk)
 {
 	if (0 == iSubItem)
-		return eHKTRemap == uhk.btHKType ? true : false;
+		return eHKTRemap == uhk.bits.btHKType ? true : false;
 
 	// sub item > 0
-	if (eHKTCaps == uhk.btHKType)
+	if (eHKTCaps == uhk.bits.btHKType)
 		return false;
 
-	if (eHKTRemap != uhk.btHKType)
+	if (eHKTRemap != uhk.bits.btHKType)
 		return true;
 	
 	// only remapped
@@ -1075,7 +1079,7 @@ static bool IsHotkeyEditable(int iSubItem, UHK uhk)
 }
 
 
-static LRESULT OnHotkeysHotTrack(HWND hwnd, NMHDR* pnmhdr)
+static LRESULT OnHotkeysHotTrack(HWND /*hwnd*/, NMHDR* pnmhdr)
 {
 	LPNMLISTVIEW lpnmlv = (LPNMLISTVIEW)pnmhdr;
 
@@ -1087,7 +1091,7 @@ static LRESULT OnHotkeysHotTrack(HWND hwnd, NMHDR* pnmhdr)
 		lvi.iItem    = lvhti.iItem;
 		ListView_GetItem(pnmhdr->hwndFrom, &lvi);
 
-		UHK uhk = (UHK)(lvi.lParam);
+		UHK uhk = (UHK)(( unsigned long )lvi.lParam);
 		SetCursor(LoadCursor(NULL, IsHotkeyEditable(lvhti.iSubItem, uhk)
 					? IDC_HAND : IDC_ARROW));
 	}
@@ -1096,7 +1100,7 @@ static LRESULT OnHotkeysHotTrack(HWND hwnd, NMHDR* pnmhdr)
 }
 
 
-static LRESULT OnLanguagesHotTrack(HWND hwnd, NMHDR* pnmhdr)
+static LRESULT OnLanguagesHotTrack(HWND /*hwnd*/, NMHDR* pnmhdr)
 {
 	LPNMLISTVIEW lpnmlv = (LPNMLISTVIEW)pnmhdr;
 
@@ -1134,7 +1138,7 @@ static LRESULT OnLanguagesHotTrack(HWND hwnd, NMHDR* pnmhdr)
 }
 
 
-static LRESULT OnGroupsHotTrack(HWND hwnd, NMHDR* pnmhdr)
+static LRESULT OnGroupsHotTrack(HWND /*hwnd*/, NMHDR* pnmhdr)
 {
 	LPNMLISTVIEW lpnmlv = (LPNMLISTVIEW)pnmhdr;
 
@@ -1146,7 +1150,7 @@ static LRESULT OnGroupsHotTrack(HWND hwnd, NMHDR* pnmhdr)
 		lvi.iItem    = lvhti.iItem;
 		ListView_GetItem(pnmhdr->hwndFrom, &lvi);
 
-		UHK uhk = (UHK)(lvi.lParam);
+		UHK uhk = (UHK)( ( unsigned long )lvi.lParam);
 		if (0 == lvhti.iSubItem || 0 != uhk.ulKey)
 			SetCursor(LoadCursor(NULL, IDC_HAND));
 	}
@@ -1292,7 +1296,7 @@ static LRESULT OnConfigureCustomDraw(HWND hwnd, NMHDR* pNMHDR)
 
 
 static void OnConfigureCommand(
-		HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
+		HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
 {
 	switch (id) {
 	case IDOK: 		 EndDialog(hwnd, IDOK);
@@ -1340,12 +1344,12 @@ static LRESULT OnConfigureNotify(HWND hwnd, int idFrom, NMHDR* pnmhdr)
 }
 
 
-static void OnConfigureOwnerDrawHotkeys(HWND hwnd, const DRAWITEMSTRUCT *lpDrawItem)
+static void OnConfigureOwnerDrawHotkeys(HWND /*hwnd*/, const DRAWITEMSTRUCT *lpDrawItem)
 {
 	RECT rcItem(lpDrawItem->rcItem);
 	rcItem.right = rcItem.left;
 
-	UHK uhk(lpDrawItem->itemData);
+	UHK uhk( ( unsigned long )lpDrawItem->itemData );
 
 	LV_COLUMN lvc = { 0 };
 	lvc.mask = LVCF_WIDTH;
@@ -1369,7 +1373,7 @@ static void OnConfigureOwnerDrawHotkeys(HWND hwnd, const DRAWITEMSTRUCT *lpDrawI
 		RECT rcLabel(rcItem);
 		rcLabel.left += cnDrawTextOffset;
 		rcLabel.right -= cnDrawTextOffset;
-		DrawText(lpDrawItem->hDC, aText, _tcslen(aText), 
+		DrawText(lpDrawItem->hDC, aText, ( int )_tcslen(aText), 
 			&rcLabel, (nColumn == 0 ? DT_LEFT : DT_RIGHT)
 				| DT_SINGLELINE | DT_NOPREFIX | DT_NOCLIP | DT_VCENTER);
 	}
@@ -1378,7 +1382,7 @@ static void OnConfigureOwnerDrawHotkeys(HWND hwnd, const DRAWITEMSTRUCT *lpDrawI
 }
 
 
-static void OnConfigureOwnerDrawLanguages(HWND hwnd, const DRAWITEMSTRUCT *lpDrawItem)
+static void OnConfigureOwnerDrawLanguages(HWND /*hwnd*/, const DRAWITEMSTRUCT *lpDrawItem)
 {
 	RECT rcItem(lpDrawItem->rcItem);
 	rcItem.right = rcItem.left;
@@ -1407,26 +1411,26 @@ static void OnConfigureOwnerDrawLanguages(HWND hwnd, const DRAWITEMSTRUCT *lpDra
 		switch (nColumn) {
 		case 0: // inUse
 			if (i->second.inUse)
-				index = g_keyboardInfo.size(); // check
+				index = ( int )g_keyboardInfo.size(); // check
 			break;
 		case 1: // Flag
-			index = std::distance(g_keyboardInfo.begin(), i);
+			index = ( int )std::distance(g_keyboardInfo.begin(), i);
 			break;
 		case 2: { // Name
 			RECT rcLabel(rcItem);
 			rcLabel.left += cnDrawTextOffset;
 			rcLabel.right -= cnDrawTextOffset;
-			DrawText(lpDrawItem->hDC, i->second.name.c_str(), i->second.name.size(), 
+			DrawText(lpDrawItem->hDC, i->second.name.c_str(), ( int )i->second.name.size(),
 				&rcLabel, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_NOCLIP | DT_VCENTER); 
 			continue;
 		}
 		case 3: // LED
 			if (i->second.inUse && i->second.useLED)
-				index = g_keyboardInfo.size(); // check
+				index = ( int )g_keyboardInfo.size(); // check
 			break;
 		case 4: // Overlay
 			if (i->second.inUse && i->second.showIcon)
-				index = std::distance(g_keyboardInfo.begin(), i);
+				index = ( int )std::distance(g_keyboardInfo.begin(), i);
 			break;
 		default:
 			continue; // skip ?
@@ -1445,7 +1449,7 @@ static void OnConfigureOwnerDrawLanguages(HWND hwnd, const DRAWITEMSTRUCT *lpDra
 }
 
 
-static void OnConfigureOwnerDrawGroups(HWND hwnd, const DRAWITEMSTRUCT *lpDrawItem)
+static void OnConfigureOwnerDrawGroups(HWND /*hwnd*/, const DRAWITEMSTRUCT *lpDrawItem)
 {
 	RECT rcItem(lpDrawItem->rcItem);
 	rcItem.right = rcItem.left;
@@ -1470,7 +1474,7 @@ static void OnConfigureOwnerDrawGroups(HWND hwnd, const DRAWITEMSTRUCT *lpDrawIt
 		} break;
 #endif // SYSKEY
 	default: {
-		UHK uhk(lpDrawItem->itemData);
+		UHK uhk( ( unsigned long )lpDrawItem->itemData);
 		i_hk = g_hotkeyInfo.find(uhk);
 		if (i_hk == g_hotkeyInfo.end())
 			name += _T("Unknown");
@@ -1496,7 +1500,7 @@ static void OnConfigureOwnerDrawGroups(HWND hwnd, const DRAWITEMSTRUCT *lpDrawIt
 			RECT rcLabel(rcItem);
 			rcLabel.left += cnDrawTextOffset;
 			rcLabel.right -= cnDrawTextOffset;
-			DrawText(lpDrawItem->hDC, name.c_str(), name.size(), 
+			DrawText(lpDrawItem->hDC, name.c_str(), ( int )name.size(),
 				&rcLabel, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX | DT_NOCLIP | DT_VCENTER); 
 			continue;
 		}
@@ -1647,7 +1651,7 @@ BOOL OnSetCursor(HWND hwnd, HWND hwndCursor, UINT codeHitTest, UINT msg)
 }
 
 
-void OnNCLButtonDown(HWND hwnd, BOOL fDoubleClick, int x, int y, UINT codeHitTest)
+void OnNCLButtonDown(HWND hwnd, BOOL /*fDoubleClick*/, int x, int y, UINT codeHitTest)
 {
 	switch (codeHitTest) {
 	case HTSPLIT_TOP:
@@ -1665,7 +1669,7 @@ void OnNCLButtonDown(HWND hwnd, BOOL fDoubleClick, int x, int y, UINT codeHitTes
 }
 
 
-void OnMouseMove(HWND hwnd, int x, int y, UINT keyFlags)
+void OnMouseMove(HWND hwnd, int /*x*/, int y, UINT /*keyFlags*/)
 {
 	if (hwnd == GetCapture()) {
 		int nLocalesDelta = 0;
@@ -1704,7 +1708,7 @@ void OnMouseMove(HWND hwnd, int x, int y, UINT keyFlags)
 }
 
 
-void OnLButtonUp(HWND hwnd, int x, int y, UINT keyFlags)
+void OnLButtonUp(HWND hwnd, int /*x*/, int /*y*/, UINT /*keyFlags*/)
 {
   if (hwnd == GetCapture()) {
 		ReleaseCapture();
@@ -1735,7 +1739,7 @@ static INT_PTR __stdcall ConfigureDialogProc(HWND hDlg, UINT message,
 
 int RunConfiguration(HWND hParentWnd)
 {
-	return DialogBox(g_hInstance,
+	return ( int )DialogBox(g_hInstance,
 		MAKEINTRESOURCE(IDD_CONFIGURE_DIALOG),    /// dialog box template
 		hParentWnd, ConfigureDialogProc);
 }
@@ -1786,7 +1790,7 @@ bool LoadExternalIcon(HICON* phIcon, LPCTSTR lpszName)
 
 static HWND st_hwndAboutBox = NULL;
 
-static BOOL OnInitAboutBoxDialog(HWND hwnd, HWND hwndFocus, LPARAM lParam)
+static BOOL OnInitAboutBoxDialog(HWND hwnd, HWND /*hwndFocus*/, LPARAM /*lParam*/)
 {
 	st_hwndAboutBox = hwnd;
 
@@ -1797,7 +1801,7 @@ static BOOL OnInitAboutBoxDialog(HWND hwnd, HWND hwndFocus, LPARAM lParam)
 	path.resize(MAX_PATH * 3);
 	DWORD handle = 0;
 	DWORD dataSize = 0;
-	if (GetModuleFileName(g_hInstance, &path[0], path.size())
+	if (GetModuleFileName(g_hInstance, &path[0], ( DWORD )path.size())
 			&& (0 != (dataSize = GetFileVersionInfoSize(&path[0], &handle)))) {
 		void* verData = alloca(dataSize);
 		TCHAR* pverInfo = NULL;
@@ -1815,7 +1819,7 @@ static BOOL OnInitAboutBoxDialog(HWND hwnd, HWND hwndFocus, LPARAM lParam)
 
 
 static void OnAboutBoxCommand(
-		HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
+		HWND hwnd, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
 {
 	switch (id) {
 	case IDOK:			EndDialog(hwnd, IDOK); break;
@@ -1826,7 +1830,7 @@ static void OnAboutBoxCommand(
 }
 
 
-static LRESULT OnAboutBoxNotify(HWND hwnd, int idFrom, NMHDR* pnmhdr)
+static LRESULT OnAboutBoxNotify(HWND hwnd, int /*idFrom*/, NMHDR* pnmhdr)
 {
 	if (NULL == pnmhdr)
 		return 0;
@@ -1868,7 +1872,7 @@ int AboutBoxDialog(HWND hParentWnd)
 	MessageBeep(MB_ICONINFORMATION);
 
 	if (NULL == st_hwndAboutBox) {
-		int nResult = DialogBox(g_hInstance,
+		int nResult = ( int )DialogBox(g_hInstance,
 			MAKEINTRESOURCE(IDD_ABOUT_BOX),    /// dialog box template
 			hParentWnd, AboutBoxCutDialogProc);
 

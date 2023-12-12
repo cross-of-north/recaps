@@ -30,37 +30,34 @@ enum EHKType {
 
 union UHK {
 	unsigned long ulKey;
-	struct {
+	struct hotkeys_t {
 		unsigned long ulHotKey	: 25;	// VK, SK, Mods
 /*		unsigned long _bCycleHK	: 1;
 		unsigned long _bCapsHK		: 1;
 		unsigned long _bRecodeHK	: 1;
 		unsigned long _bEjectHK	: 1;
 		unsigned long _bRemapHK	: 1; */
-	};
+	} hotkeys;
 
-	struct {
+	struct bits_t {
 		unsigned long btVK			: 8;
 		unsigned long btSK			: 8;
 		unsigned long btMods		: 9;
 		unsigned long btHKType	: 5;	// Cycle, Caps, Eject etc ...
 		unsigned long bExtKey		: 1;
 		unsigned long bKeyDown	: 1;
-	};
+	} bits;
 
 	UHK(unsigned long key) : ulKey(key) {}
 	UHK(unsigned char VK,
 			unsigned char SK,
 			unsigned short Mods, bool Down, bool Ext)
-		: btVK(VK)
-		, btSK(SK)
-		, btMods(Mods)
-		, btHKType(eHKTGroup)
-		, bKeyDown(Down)
-		, bExtKey(Ext) {}
+		: bits{ VK, SK, Mods, eHKTGroup, Ext, Down }
+	{
+	}
 
 	bool operator<(const UHK &ob) const {
-		return ulHotKey < ob.ulHotKey; }
+		return hotkeys.ulHotKey < ob.hotkeys.ulHotKey; }
 };
 
 
