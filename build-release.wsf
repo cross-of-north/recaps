@@ -1,0 +1,238 @@
+<package>
+
+<!-- MUST BE THE FIRST JOB IN THE WSF!!! -->
+<!-- Called in case this WSF was invoked manually -->
+
+<job id = "ManualInvokeHandler">
+	<object id="FSO" progid="Scripting.FileSystemObject" />
+	<object id="DTE" progid="VisualStudio.DTE.9.0"/>
+	<object id="WSHShell" progid="WScript.Shell"/> 
+	<object id="shellApp" progid="Shell.Application"/>
+	<script language="JScript">
+
+	var solutionFileName = "recaps.2008.sln";
+
+	var currentFolder = FSO.GetParentFolderName(WScript.ScriptFullName);
+	var solutionPath = FSO.BuildPath(currentFolder, solutionFileName);
+
+	DTE.MainWindow.Visible = true;
+	DTE.UserControl = true;
+
+	var Solution = DTE.Solution;
+	Solution.Open(solutionPath);
+
+	try {
+
+		var versionFileName = "version.rc2";
+		var versionFileNameOrg = versionFileName + ".org";
+
+		FSO.CopyFile(versionFileName, versionFileNameOrg);
+		
+		var platforms = ["x64", "Win32"];
+		for (var p in platforms) {
+			FSO.CopyFile(versionFileNameOrg, versionFileName);
+
+			var configEnum = new Enumerator(Solution.SolutionBuild.SolutionConfigurations);
+			for ( ; !configEnum.atEnd(); configEnum.moveNext()) {
+				var config = configEnum.item();
+				if (platforms[p] == config.PlatformName && config.Name == "Release") {
+					config.Activate();
+					break;
+				}
+			}
+
+			DTE.ExecuteCommand("Build.CleanSolution");
+			// wait until building ...
+			while (Solution.SolutionBuild.BuildState != 3)
+				WScript.sleep(500);
+
+			if (Solution.SolutionBuild.LastBuildInfo != 0)
+				throw "Cleaning of solution '" + solutionFileName
+						+ "' failed due " + Solution.SolutionBuild.LastBuildInfo
+						+ " error(s). Please check build log.";
+
+			DTE.ExecuteCommand("Build.BuildSolution");
+			// wait until building ...
+			while (Solution.SolutionBuild.BuildState != 3)
+				WScript.sleep(500);
+
+			if (Solution.SolutionBuild.LastBuildInfo != 0)
+				throw "Building of solution '" + solutionFileName
+						+ "' failed due " + Solution.SolutionBuild.LastBuildInfo
+						+ " error(s). Please check build log.";
+		}
+
+		FSO.DeleteFile(versionFileNameOrg);
+
+		// all is OK - close automated VStudio instance silently.
+		DTE.Quit();
+
+
+		FSO.OpenTextFile(versionFileName, 1, 0);
+		var inFile = FSO.GetFile(versionFileName);
+		var inStream = inFile.OpenAsTextStream(1, 0);
+
+		var majorVersion = 0;
+		var minorVersion = 0;
+		var subminorVersion = 0;
+		var buildNumber = 0;
+
+		do {
+			function ExtractNumber(inputLine, prefix) {
+				var RXP = new RegExp(prefix + "\\s+(\\d+)");
+				var results = RXP.exec(inputLine);
+				return null != results ? parseInt(results[1]) : null;
+			}
+
+			var inputLine = inStream.ReadLine();
+			if (null != (n = ExtractNumber(inputLine, "^#define _MAJOR_VERSION")))
+				majorVersion = n;
+			if (null != (n = ExtractNumber(inputLine, "^#define _MINOR_VERSION")))
+				minorVersion = n;
+			if (null != (n = ExtractNumber(inputLine, "^#define _SUBMINOR_VERSION")))
+				subminorVersion = n;
+			if (null != (n = ExtractNumber(inputLine, "^#define _BUILD_NUMBER")))
+				buildNumber = n;
+
+		} while (!inStream.AtEndOfStream);
+
+		inStream.Close();
+
+		var Process = WSHShell.Exec("iscc /Q+ setup.iss");
+		while (Process.Status == 0)
+			WScript.sleep(500);
+
+		switch (Process.ExitCode) {
+		case 0:	break;
+		case 1:	throw "Setup package compilation failed. Invalid parameters.";
+		case 2:	throw "Setup package compilation failed. Internal error.";
+		default: throw "Setup package compile error:" + Process.ExitCode;
+		}
+
+		var zipName = FSO.BuildPath(currentFolder, "DistOutput");
+		zipName = FSO.BuildPath(zipName, "ReCaps_src_V" + majorVersion + "." + minorVersion + "."
+														+ subminorVersion + "." + buildNumber + ".zip");
+		if (FSO.FileExists(zipName))
+			FSO.DeleteFile(zipName);
+		var zip = FSO.CreateTextFile(zipName);
+		zip.Write("PK\x05\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00");
+		zip.Close();
+		zip = null;
+
+		var zipNameSpace = shellApp.NameSpace(zipName);
+			
+		function PackFileFolder(zipNameSpace, fileFolderName) {
+			var count = zipNameSpace.Items().Count;
+			zipNameSpace.CopyHere(fileFolderName);
+			while (zipNameSpace.Items().Count < count + 1)
+				WScript.sleep(100);
+		}
+
+		PackFileFolder(zipNameSpace, FSO.BuildPath(currentFolder, "res"));
+		PackFileFolder(zipNameSpace, FSO.BuildPath(currentFolder, "flags"));
+
+		var filesEnum = new Enumerator(FSO.GetFolder(currentFolder).Files);
+		for ( ; !filesEnum.atEnd(); filesEnum.moveNext()) {
+			var entry = filesEnum.item();
+			switch (entry.Name.split('.').pop()) {
+			case "h": 
+			case "cpp": 
+			case "txt": 
+			case "iss": 
+			case "vcproj": 
+			case "sln": 
+			case "rc": 
+			case "rc2": 
+			case "LICENSE": 
+			case "wsf": 
+				PackFileFolder(zipNameSpace, FSO.BuildPath(currentFolder, entry.Name));
+				break;
+			}
+		}
+
+
+		WSHShell.Popup("Releasing version "
+			+ majorVersion + "." + minorVersion + "."
+			+ subminorVersion + "." + buildNumber + " succeeded!");
+
+	} catch (e) {
+		var msg = "";
+		for (var prop in e)
+			msg += prop == "number"
+				? prop + ": [0x" + (e[prop]>>>0).toString(16) + "]" + "\r\n"
+					: prop + ": [" + e[prop] + "]" + "\r\n";
+
+		WSHShell.Popup(msg);
+	}
+
+    </script>
+</job>
+
+
+<!-- 
+	
+	Increments dev.build number in the header file.
+	
+	cscript //NoLogo ./build-release.wsf //Job:IncrementDevBuild \
+		/headerFileName:version.rc2.c /searchPrefix:"#define _BUILD_NUMBER"
+
+-->
+<job id = "IncrementDevBuild">
+	<object id="FSO" progid="Scripting.FileSystemObject" />
+	<script language="JScript">
+		
+	try {
+
+		var headerFileName = WSH.Arguments.Named("headerFileName");
+		var searchPrefix = WSH.Arguments.Named("searchPrefix");
+
+		if (headerFileName == undefined || headerFileName == null)
+			throw "Header file name is not provided!";
+		if (searchPrefix == undefined || searchPrefix == null)
+			throw "Build revision search prefix is not provided!";
+
+		FSO.OpenTextFile(headerFileName, 1, 0);
+		var inFile = FSO.GetFile(headerFileName);
+		var inStream = inFile.OpenAsTextStream(1, 0);
+
+		var outTmpName = "1.tmp";
+		FSO.CreateTextFile(outTmpName, true, true);
+		var fileOut = FSO.GetFile(outTmpName);
+		var outStream = fileOut.OpenAsTextStream(2, 0);
+
+		do {
+			var RXP = new RegExp(searchPrefix + "\\s+(\\d+)");
+			var inputLine = inStream.ReadLine();
+			var results = RXP.exec(inputLine);
+			if (null != results)
+				inputLine = inputLine.replace(results[1], parseInt(results[1]) + 1);
+			outStream.WriteLine(inputLine);
+
+		} while (!inStream.AtEndOfStream);
+
+		inStream.Close();
+		outStream.Close();
+
+		FSO.CopyFile(outTmpName, headerFileName, true);
+		FSO.DeleteFile(outTmpName);
+
+	} catch (e) {
+
+		var message = "Fail to increment dev build:";
+		WSH.Echo("ERROR:" + message);
+		WSH.Echo(e.toString());
+		for (var prop in e)
+			if (prop == "number")
+				WSH.Echo(prop + ": [0x" + (e[prop]>>>0).toString(16) + "]");
+			else
+				WSH.Echo(prop + ": [" + e[prop] + "]");
+
+		WSH.Quit(-1);
+	}
+
+    </script>
+</job>
+
+
+</package>
+
